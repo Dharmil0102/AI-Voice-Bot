@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Qe Apps</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+
+  <!-- Font Awesome for icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <audio id="welcomeAudio" src="{{ url_for('static', filename='greeting.mp3') }}" controls style="display: none;"></audio>
+  
+  <!-- Main Container -->
+  <div class="container">
+    <!-- Audio Visualizer (75% width) -->
+    <div class="visualizer-container">
+      <div class="visualizer">
+        <div class="visualizer-bars" id="visualizerBars">
+          <div class="visualizer-bar"></div>
+          <div class="visualizer-bar"></div>
+          <div class="visualizer-bar"></div>
+          <div class="visualizer-bar"></div>
+          <div class="visualizer-bar"></div>
+          <div class="visualizer-bar"></div>
+          <div class="visualizer-bar"></div>
+          <div class="visualizer-bar"></div>
+          <div class="visualizer-bar"></div>
+        </div>
+      </div>
+      
+      <!-- Microphone Controls -->
+      <div class="mic-controls">
+        <button id="toggleMic" class="mic-button" aria-label="Toggle microphone">
+          <i class="fas fa-microphone" aria-hidden="true"></i>
+        </button>
+        <div class="mic-visualizer-container">
+          <canvas id="micVisualizer"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chatbox (25% width) -->
+    <div class="chatbox">
+      <div class="chat-header">
+        <h2>Chat with AI tutor</h2>
+      </div>
+      <div class="chat-messages" id="chatMessages" aria-live="polite">
+        <!-- Messages will appear here -->
+      </div>
+      <div class="typing-indicator" id="typingIndicator">
+        <div class="message-typing-indicator">
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+        </div>
+      </div>
+      <div class="chat-input">
+        <input type="text" id="userInput" placeholder="Type your message..." aria-label="Type your message">
+        <button id="sendButton" aria-label="Send message"><i class="fas fa-paper-plane" aria-hidden="true"></i></button>
+      </div>
+    </div>
+  </div>
+
+  <noscript>
+    <p>Please enable JavaScript to use this application.</p>
+  </noscript>
+
+  <!-- JavaScript -->
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
