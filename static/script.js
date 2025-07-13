@@ -42,6 +42,7 @@ document.addEventListener("DOMContentLoaded", function () {
   let isIdle = true;
 
   // Initialize
+  let conversationHistory = [];
   resizeCanvases();
   window.addEventListener("resize", resizeCanvases);
   initializeMicrophone();
@@ -68,6 +69,11 @@ document.addEventListener("DOMContentLoaded", function () {
     micCanvas.height = micCanvas.offsetHeight;
   }
 
+  let resizeTimeout;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(resizeCanvases, 200);
+  });
   async function initializeMicrophone() {
     try {
       // Just check permission, don't keep stream open initially
@@ -259,77 +265,97 @@ document.addEventListener("DOMContentLoaded", function () {
     const messageDiv = document.createElement("div");
     messageDiv.classList.add("message", `${sender}-message`);
     messageDiv.textContent = text;
+    messageDiv.style.opacity = 0;
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    requestAnimationFrame(() => {
+      messageDiv.style.opacity = 1;
+      messageDiv.style.transition = "opacity 0.4s ease";
+    });
+    conversationHistory.push({ role: sender === "user" ? "user" : "assistant", content: text });
+
   }
 
-  async function processUserInput(input) {
-  typingIndicator.style.display = 'block';
-  chatMessages.scrollTop = chatMessages.scrollHeight;
+  function disableChatInput(disabled) {
+    userInput.disabled = disabled;
+    sendButton.disabled = disabled;
+    userInput.style.opacity = disabled ? 0.6 : 1;
+  }
 
-  if (controller) controller.abort();
-  controller = new AbortController();
+  async function processUserInput() {
+    disableChatInput(true);
+    typingIndicator.style.display = 'block';
+    chatMessages.scrollTop = chatMessages.scrollHeight;
 
-  let thinkingSpoken = false;
-  let responseFinished = false;
+    if (controller) controller.abort();
+    controller = new AbortController();
 
-  // Make sure voices are loaded first
-  await new Promise(resolve => {
-    const voices = speechSynthesis.getVoices();
-    if (voices.length) {
-      resolve();
-    } else {
-      speechSynthesis.onvoiceschanged = () => resolve();
-    }
-  });
+    let thinkingSpoken = false;
+    let responseFinished = false;
 
-  // ⏳ Setup timeout to trigger thinking speech
-  const thinkingTimeout = setTimeout(() => {
-    if (!responseFinished) {
-      const thinkingMsg = new SpeechSynthesisUtterance("AI is thinking...");
-      thinkingMsg.lang = "en-US";
-      thinkingMsg.volume = 1;
-      thinkingMsg.rate = 1;
-      thinkingMsg.pitch = 1;
-
+    // Make sure voices are loaded first
+    await new Promise(resolve => {
       const voices = speechSynthesis.getVoices();
-      const emma = voices.find(v => v.name.includes("Emma"));
-      if (emma) thinkingMsg.voice = emma;
+      if (voices.length) {
+        resolve();
+      } else {
+        speechSynthesis.onvoiceschanged = () => resolve();
+      }
+    });
 
-      speechSynthesis.speak(thinkingMsg);
-      thinkingSpoken = true;
-    }
-  }, 10000); // Trigger only after 10 seconds
+    // ⏳ Setup timeout to trigger thinking speech
+    const thinkingTimeout = setTimeout(() => {
+      if (!responseFinished) {
+        const thinkingMsg = new SpeechSynthesisUtterance("AI is thinking...");
+        thinkingMsg.lang = "en-US";
+        thinkingMsg.volume = 1;
+        thinkingMsg.rate = 1;
+        thinkingMsg.pitch = 1;
 
-  try {
-    const response = await fetch("/get_response", {
+        const voices = speechSynthesis.getVoices();
+        const emma = voices.find(v => v.name.includes("Emma"));
+        if (emma) thinkingMsg.voice = emma;
+
+        speechSynthesis.speak(thinkingMsg);
+        thinkingSpoken = true;
+      }
+    }, 10000); // Trigger only after 10 seconds
+
+    try {
+      const maxHistory = 6;
+      const recentConversation = conversationHistory.slice(-maxHistory);
+      const response = await fetch("/get_response", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: input }),
+      body: JSON.stringify({
+        conversation: recentConversation,
+      }),
       signal: controller.signal
     });
 
-    responseFinished = true;
-    clearTimeout(thinkingTimeout); // Cancel timeout if response came fast
+      responseFinished = true;
+      clearTimeout(thinkingTimeout); // Cancel timeout if response came fast
 
-    if (!response.ok) throw new Error("Network response was not ok");
+      if (!response.ok) throw new Error("Network response was not ok");
 
-    const data = await response.json();
-    typingIndicator.style.display = 'none';
-    addMessage("ai", data.response);
+      const data = await response.json();
+      typingIndicator.style.display = 'none';
+      addMessage("ai", data.response);
 
-    if (data.audio_url) playAudioResponse(data.audio_url);
+      if (data.audio_url) playAudioResponse(data.audio_url);
 
-  } catch (error) {
-    responseFinished = true;
-    clearTimeout(thinkingTimeout);
-    typingIndicator.style.display = 'none';
+    } catch (error) {
+      responseFinished = true;
+      clearTimeout(thinkingTimeout);
+      typingIndicator.style.display = 'none';
 
-    if (error.name !== "AbortError") {
-      console.error("Processing error:", error);
-      addMessage("ai", "Sorry, I'm having trouble responding right now.");
+      if (error.name !== "AbortError") {
+        console.error("Processing error:", error);
+        addMessage("ai", "Sorry, I'm having trouble responding right now.");
+      }
     }
-  }
+    disableChatInput(false);
 }
 
 
@@ -437,7 +463,7 @@ recognition.onresult = async (event) => {
     const transcript = lastResult[0].transcript.trim();
     if (transcript) {
       addMessage("user", transcript);
-      await processUserInput(transcript);
+      await processUserInput();
     }
   }
 };

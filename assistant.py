@@ -33,21 +33,21 @@ def cleanup_old_files(directory, keep_latest=5):
     for file in files[:-keep_latest]:  # Delete older files
         os.remove(file)
 
-def chatgpt_response(prompt):
-    """Get a response from OpenAI's GPT-4o-mini with instructions."""
+def chatgpt_response(conversation):
+    """Get a response from OpenAI's GPT-4o-mini with context and system instructions."""
     try:
+        messages = [{"role": "system", "content": INSTRUCTIONS}] + conversation
+
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": INSTRUCTIONS},
-                {"role": "user", "content": prompt}
-            ],
+            messages=messages,
             temperature=0.7,
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
         print(f"Error interacting with OpenAI: {e}")
         return "Sorry, I couldn't generate a response at the moment."
+
 
 def generate_tts(text):
     """Generate speech from text using OpenAI's TTS API and return filename as .wav."""
@@ -92,13 +92,13 @@ def get_response():
     global current_audio_process
 
     data = request.get_json()
-    user_text = data.get("text", "")
+    conversation = data.get("conversation", [])
 
     # Stop current audio if user speaks
     stop_current_audio()
 
     # Run GPT and TTS in parallel using ThreadPoolExecutor
-    response_text = executor.submit(chatgpt_response, user_text).result()
+    response_text = executor.submit(chatgpt_response, conversation).result()
     audio_filename = executor.submit(generate_tts, response_text).result()
 
     return jsonify({
