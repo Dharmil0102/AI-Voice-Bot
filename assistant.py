@@ -12,7 +12,7 @@ app = Flask(__name__)
 
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
-INSTRUCTIONS = """You're a helpful and friendly AI assistant. Keep answers short and to the point, and be playful, but not overly verbose. Use a friendly tone and avoid technical jargon. If you don't know the answer, say so politely. Always respond in a way that is engaging and encourages further interaction. and only answer under 100 words."""
+INSTRUCTIONS = """You're a helpful and friendly AI assistant. Keep answers short and to the point, and be playful, but not overly verbose. Use a friendly tone and avoid technical jargon. If you don't know the answer, say so politely. Always respond in a way that is engaging and encourages further interaction. and only answer under 100 words. NO EMOJIES"""
 
 # Directory to store audio files
 AUDIO_DIR = "static/audio"
@@ -33,19 +33,22 @@ def cleanup_old_files(directory, keep_latest=5):
     for file in files[:-keep_latest]:  # Delete older files
         os.remove(file)
 
-def chatgpt_response(conversation):
-    """Get a response from OpenAI's GPT-4o-mini with context and system instructions."""
+def chatgpt_response_stream(conversation):
     try:
         messages = [{"role": "system", "content": INSTRUCTIONS}] + conversation
-
-        response = openai.chat.completions.create(
-            model="gpt-4o-mini",
+        stream = openai.chat.completions.create(
+            model="gpt-4.1-nano",
             messages=messages,
             temperature=0.7,
+            stream=True
         )
-        return response.choices[0].message.content.strip()
+        collected_chunks = []
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content or ""
+            collected_chunks.append(delta)
+        return "".join(collected_chunks).strip()
     except Exception as e:
-        print(f"Error interacting with OpenAI: {e}")
+        print(f"Error in streaming GPT response: {e}")
         return "Sorry, I couldn't generate a response at the moment."
 
 
@@ -87,24 +90,33 @@ def index():
     return render_template('index.html')
 
 @app.route('/get_response', methods=['POST'])
-def get_response():
-    """Process user input, get AI response, generate TTS, and stop existing playback."""
-    global current_audio_process
-
+async def get_response():
     data = request.get_json()
     conversation = data.get("conversation", [])
-
-    # Stop current audio if user speaks
-    stop_current_audio()
-
-    # Run GPT and TTS in parallel using ThreadPoolExecutor
-    response_text = executor.submit(chatgpt_response, conversation).result()
-    audio_filename = executor.submit(generate_tts, response_text).result()
+    response_text = chatgpt_response_stream(conversation)
 
     return jsonify({
-        "response": response_text,
-        "audio_url": f"/play_audio/{audio_filename}" if audio_filename else None
+        "response": response_text
     })
+# @app.route('/get_response', methods=['POST'])
+# def get_response():
+#     """Process user input, get AI response, generate TTS, and stop existing playback."""
+#     global current_audio_process
+
+#     data = request.get_json()
+#     conversation = data.get("conversation", [])
+
+#     # Stop current audio if user speaks
+#     stop_current_audio()
+
+#     # Run GPT and TTS in parallel using ThreadPoolExecutor
+#     response_text = executor.submit(chatgpt_response, conversation).result()
+#     audio_filename = executor.submit(generate_tts, response_text).result()
+
+#     return jsonify({
+#         "response": response_text,
+#         "audio_url": f"/play_audio/{audio_filename}" if audio_filename else None
+#     })
 
 @app.route('/play_audio/<filename>')
 def play_audio(filename):

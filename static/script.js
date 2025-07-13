@@ -29,6 +29,7 @@ document.addEventListener("DOMContentLoaded", function () {
   let isRecognitionActive = false;
 
   // UI Elements
+  
   const toggleMicButton = document.getElementById("toggleMic");
   const chatMessages = document.getElementById("chatMessages");
   const userInput = document.getElementById("userInput");
@@ -343,7 +344,8 @@ document.addEventListener("DOMContentLoaded", function () {
       typingIndicator.style.display = 'none';
       addMessage("ai", data.response);
 
-      if (data.audio_url) playAudioResponse(data.audio_url);
+      // if (data.audio_url) playAudioResponse(data.audio_url);
+      speakResponse(data.response);
 
     } catch (error) {
       responseFinished = true;
@@ -357,30 +359,43 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     disableChatInput(false);
 }
+    function speakResponse(text) {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US";
+    utterance.volume = 1;
+    utterance.rate = 1;
+    utterance.pitch = 1;
 
+    const voices = speechSynthesis.getVoices();
+    const emma = voices.find(v => v.name.includes("Emma")) || voices[0];
+    if (emma) utterance.voice = emma;
 
-
-  function playAudioResponse(url) {
-    if (currentAudio) {
-      currentAudio.pause();
-      currentAudio.currentTime = 0;
-    }
-    
-    const audio = new Audio(url);
-    audio.onplay = () => {
-      startAudioVisualizer(audio);
-      visualizerContainer.classList.add('visualizer-active');
-      isIdle = false;
-      document.getElementById('visualizerBars').classList.remove('visualizer-idle');
-    };
-    
-    audio.onended = () => {
-      visualizerContainer.classList.remove('visualizer-active');
-    };
-    
-    currentAudio = audio;
-    audio.play().catch(error => console.error("Audio playback error:", error));
+    speechSynthesis.speak(utterance);
   }
+
+
+
+  // function playAudioResponse(url) {
+  //   if (currentAudio) {
+  //     currentAudio.pause();
+  //     currentAudio.currentTime = 0;
+  //   }
+    
+  //   const audio = new Audio(url);
+  //   audio.onplay = () => {
+  //     startAudioVisualizer(audio);
+  //     visualizerContainer.classList.add('visualizer-active');
+  //     isIdle = false;
+  //     document.getElementById('visualizerBars').classList.remove('visualizer-idle');
+  //   };
+    
+  //   audio.onended = () => {
+  //     visualizerContainer.classList.remove('visualizer-active');
+  //   };
+    
+  //   currentAudio = audio;
+  //   audio.play().catch(error => console.error("Audio playback error:", error));
+  // }
 
   function handleTextInput() {
     const text = userInput.value.trim();
