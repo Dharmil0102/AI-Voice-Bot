@@ -45,7 +45,21 @@ document.addEventListener("DOMContentLoaded", function () {
   resizeCanvases();
   window.addEventListener("resize", resizeCanvases);
   initializeMicrophone();
-  greetUser();
+  let hasGreeted = false;
+
+  function safeGreet() {
+    if (!hasGreeted) {
+      greetUser();
+      hasGreeted = true;
+    }
+  }
+
+  if (speechSynthesis.getVoices().length > 0) {
+    safeGreet();
+  } else {
+    speechSynthesis.onvoiceschanged = safeGreet;
+  }
+
   initVisualizer();
 
   // Functions
@@ -67,15 +81,26 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function greetUser() {
-    const greeting = "Hello! Welcome to Qe Apps Voice AI. How can I assist you today?";
+    const greeting = "Hello! How can I assist you today?";
     addMessage("ai", greeting);
+
     const speech = new SpeechSynthesisUtterance(greeting);
     speech.lang = "en-US";
     speech.volume = 1;
     speech.rate = 1;
     speech.pitch = 1;
+
+    const voices = speechSynthesis.getVoices();
+    const emma = voices.find(v => v.name.includes("Emma"));
+    if (emma) {
+        speech.voice = emma;
+    } else {
+        console.warn("Emma voice not found, using default.");
+    }
+
     speechSynthesis.speak(speech);
-  }
+}
+
 
   function initVisualizer() {
     visualizerBars.forEach(bar => {
@@ -239,35 +264,75 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   async function processUserInput(input) {
-    typingIndicator.style.display = 'block';
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-    
-    if (controller) controller.abort();
-    controller = new AbortController();
+  typingIndicator.style.display = 'block';
+  chatMessages.scrollTop = chatMessages.scrollHeight;
 
-    try {
-      const response = await fetch("/get_response", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: input }),
-        signal: controller.signal
-      });
-      
-      if (!response.ok) throw new Error("Network response was not ok");
-      
-      const data = await response.json();
-      typingIndicator.style.display = 'none';
-      addMessage("ai", data.response);
-      
-      if (data.audio_url) playAudioResponse(data.audio_url);
-    } catch (error) {
-      typingIndicator.style.display = 'none';
-      if (error.name !== "AbortError") {
-        console.error("Processing error:", error);
-        addMessage("ai", "Sorry, I'm having trouble responding right now.");
-      }
+  if (controller) controller.abort();
+  controller = new AbortController();
+
+  let thinkingSpoken = false;
+  let responseFinished = false;
+
+  // Make sure voices are loaded first
+  await new Promise(resolve => {
+    const voices = speechSynthesis.getVoices();
+    if (voices.length) {
+      resolve();
+    } else {
+      speechSynthesis.onvoiceschanged = () => resolve();
+    }
+  });
+
+  // ⏳ Setup timeout to trigger thinking speech
+  const thinkingTimeout = setTimeout(() => {
+    if (!responseFinished) {
+      const thinkingMsg = new SpeechSynthesisUtterance("AI is thinking...");
+      thinkingMsg.lang = "en-US";
+      thinkingMsg.volume = 1;
+      thinkingMsg.rate = 1;
+      thinkingMsg.pitch = 1;
+
+      const voices = speechSynthesis.getVoices();
+      const emma = voices.find(v => v.name.includes("Emma"));
+      if (emma) thinkingMsg.voice = emma;
+
+      speechSynthesis.speak(thinkingMsg);
+      thinkingSpoken = true;
+    }
+  }, 10000); // Trigger only after 10 seconds
+
+  try {
+    const response = await fetch("/get_response", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: input }),
+      signal: controller.signal
+    });
+
+    responseFinished = true;
+    clearTimeout(thinkingTimeout); // Cancel timeout if response came fast
+
+    if (!response.ok) throw new Error("Network response was not ok");
+
+    const data = await response.json();
+    typingIndicator.style.display = 'none';
+    addMessage("ai", data.response);
+
+    if (data.audio_url) playAudioResponse(data.audio_url);
+
+  } catch (error) {
+    responseFinished = true;
+    clearTimeout(thinkingTimeout);
+    typingIndicator.style.display = 'none';
+
+    if (error.name !== "AbortError") {
+      console.error("Processing error:", error);
+      addMessage("ai", "Sorry, I'm having trouble responding right now.");
     }
   }
+}
+
+
 
   function playAudioResponse(url) {
     if (currentAudio) {
@@ -342,18 +407,41 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   };
 
-  recognition.onresult = async (event) => {
-    const results = Array.from(event.results);
-    const lastResult = results[results.length - 1];
-    
-    if (lastResult.isFinal) {
-      const transcript = lastResult[0].transcript.trim();
-      if (transcript) {
-        addMessage("user", transcript);
-        await processUserInput(transcript);
-      }
+let hasStartedSpeaking = false;
+  
+recognition.onresult = async (event) => {
+  const results = Array.from(event.results);
+  const lastResult = results[results.length - 1];
+
+  // 🚨 This block triggers as soon as user starts speaking (interim result)
+  if (!hasStartedSpeaking && !lastResult.isFinal) {
+    hasStartedSpeaking = true;
+
+    // Stop audio + speech
+    if (currentAudio && !currentAudio.paused) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+      visualizerContainer.classList.remove('visualizer-active');
     }
-  };
+
+    if (speechSynthesis.speaking) {
+      speechSynthesis.cancel();
+    }
+
+    console.log("User started speaking.");
+  }
+
+  // ✅ Final transcript handling
+  if (lastResult.isFinal) {
+    hasStartedSpeaking = false; // Reset for next round
+    const transcript = lastResult[0].transcript.trim();
+    if (transcript) {
+      addMessage("user", transcript);
+      await processUserInput(transcript);
+    }
+  }
+};
+
 
   recognition.onerror = (event) => {
     console.error("Speech recognition error:", event.error);

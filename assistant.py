@@ -5,11 +5,14 @@ import time
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from waitress import serve
+from dotenv import load_dotenv
+
 
 app = Flask(__name__)
 
-openai.api_key = "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"
-INSTRUCTIONS = """You're a helpful and friendly AI assistant. Keep answers short and to the point, and be playful"""
+load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
+INSTRUCTIONS = """You're a helpful and friendly AI assistant. Keep answers short and to the point, and be playful, but not overly verbose. Use a friendly tone and avoid technical jargon. If you don't know the answer, say so politely. Always respond in a way that is engaging and encourages further interaction. and only answer under 100 words."""
 
 # Directory to store audio files
 AUDIO_DIR = "static/audio"
@@ -31,12 +34,14 @@ def cleanup_old_files(directory, keep_latest=5):
         os.remove(file)
 
 def chatgpt_response(prompt):
-    """Get a response from OpenAI's GPT-4o."""
+    """Get a response from OpenAI's GPT-4o-mini with instructions."""
     try:
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=100,
+            messages=[
+                {"role": "system", "content": INSTRUCTIONS},
+                {"role": "user", "content": prompt}
+            ],
             temperature=0.7,
         )
         return response.choices[0].message.content.strip()
